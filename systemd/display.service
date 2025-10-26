@@ -1,0 +1,13 @@
+[Unit]
+Description=Display service for Klipper screen (starts after moonraker-ws)
+After=moonraker-ws.service klipper.service klipper-mcu.service moonraker.service
+Wants=moonraker-ws.service klipper.service moonraker.service
+
+[Service]
+Type=simple
+ExecStart=/home/mks/display_connector/dist/display
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

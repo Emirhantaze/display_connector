@@ -62,7 +62,7 @@ from src.mapping import (
 )
 from src.colors import BACKGROUND_SUCCESS, BACKGROUND_WARNING
 
-log_file = os.path.expanduser("~/printer_data/logs/display_connector.log")
+log_file = os.path.expanduser("~/klipper_logs/display_connector.log")
 logger = logging.getLogger(__name__)
 ch_log = logging.StreamHandler(sys.stdout)
 ch_log.setLevel(logging.DEBUG)
@@ -75,8 +75,8 @@ file_log.setFormatter(formatter)
 logger.addHandler(file_log)
 logger.setLevel(logging.DEBUG)
 
-comms_directory = os.path.expanduser("~/printer_data/comms")
-config_file = os.path.expanduser("~/printer_data/config/display_connector.cfg")
+comms_directory = os.path.expanduser("/tmp")
+config_file = os.path.expanduser("~/klipper_config/display_connector.cfg")
 
 PRINTING_PAGES = [
     PAGE_PRINTING,
@@ -127,10 +127,7 @@ class DisplayController:
     last_config_change = 0
     filament_sensor_name = "filament_sensor"
 
-    def __init__(self, config, loop):
-        self._loop = loop
-        self._filename_lock = asyncio.Lock()
-        self.pending_reqs_lock = asyncio.Lock()
+    def __init__(self, config):
         self.config = config
         self._handle_config()
         self.connected = False
@@ -212,7 +209,7 @@ class DisplayController:
         self._loop.create_task(self._navigate_to_page(PAGE_OVERLAY_LOADING))
         self.config.reload_config()
         self._handle_config()
-        self._loop.create_task(self._go_back())
+        self._go_back()
 
     def _handle_config(self):
         logger.info("Loading config")
@@ -327,7 +324,6 @@ class DisplayController:
             self._loop.create_task(self.handle_zprobe_leveling())
         elif current_page == PAGE_PRINTING_KAMP:
             await self.display.draw_kamp_page(self.bed_leveling_counts)
-            return
 
         await self.display.special_page_handling(current_page)
 
@@ -350,38 +346,22 @@ class DisplayController:
         self.send_gcode(f"G91\nG1 {axis}{distance} F{int(speed) * 60}\nG90")
 
     async def _navigate_to_page(self, page, clear_history=False):
-        # 1) Special case: if you want KAMP but aren’t already on a PRINTING page,
-        #    first go to PRINTING (respecting clear_history), then fall through to KAMP.
-        if page == PAGE_PRINTING_KAMP and (not self.history or self.history[-1] not in PRINTING_PAGES):
-            # navigate to PRINTING first
-            if clear_history:
-                self.history.clear()
-            self.history.append(PAGE_PRINTING)
-            mapped_printing = self.display.mapper.map_page(PAGE_PRINTING)
-            await self.display.navigate_to(mapped_printing)
-            logger.debug(f"Navigating to {PAGE_PRINTING}")
-            # run any printing-page special logic (if you have any)
-            await self.special_page_handling(PAGE_PRINTING)
-            # now proceed to the real target: KAMP
-            # (do NOT clear_history a second time)
-        
-        # 2) The normal navigation path (skips if you’re already on `page`)
         if not self.history or self.history[-1] != page:
             # Handle page navigation within tabbed pages
             if page in TABBED_PAGES and self.history and self.history[-1] in TABBED_PAGES:
                 self.history[-1] = page
             else:
-                if clear_history and page != PAGE_PRINTING_KAMP:
-                    # only clear history here if it wasn't already the printing step above
+                if clear_history:
                     self.history.clear()
                 self.history.append(page)
-
-            # map & navigate
-            mapped = self.display.mapper.map_page(page)
-            await self.display.navigate_to(mapped)
+            
+            # Start navigation task asynchronously
+            mapped_page = self.display.mapper.map_page(page)
+            await self.display.navigate_to(mapped_page)
+            
             logger.debug(f"Navigating to {page}")
-
-            # finally, invoke your per-page overlays or fallback
+            
+            # Handle any special page logic
             await self.special_page_handling(page)
 
     def execute_action(self, action):
@@ -426,7 +406,7 @@ class DisplayController:
             gcode = action.split("'")[1]
             self.send_gcode(gcode)
         elif action == "go_back":
-            self._loop.create_task(self._go_back())
+            self._go_back()
         elif action.startswith("page"):
             self._loop.create_task(self._navigate_to_page(action.split(" ")[1]))
         elif action == "emergency_stop":
@@ -439,7 +419,7 @@ class DisplayController:
         elif action == "pause_print_confirm":
             self._loop.create_task(self._handle_pause_confirm())
         elif action == "stop_print":
-            self._loop.create_task(self._go_back())
+            self._go_back()
             self._loop.create_task(self._navigate_to_page(PAGE_OVERLAY_LOADING))
             logger.info("Stopping print")
             self._loop.create_task(self._send_moonraker_request("printer.print.cancel"))
@@ -545,7 +525,7 @@ class DisplayController:
                 self.current_filename = selected["path"]
                 self._loop.create_task(self._navigate_to_page(PAGE_CONFIRM_PRINT))
         elif action == "print_opened_file":
-            self._loop.create_task(self._go_back())
+            self._go_back()
             self._loop.create_task(self._navigate_to_page(PAGE_OVERLAY_LOADING))
             self._loop.create_task(
                 self._send_moonraker_request(
@@ -592,16 +572,18 @@ class DisplayController:
                 self.display.update_prepare_extrude_ui(self.extrude_amount, self.extrude_speed)
             )
         elif action.startswith("extrude_"):
-            if self.current_state != "printing":  # Check if the state is not 'printing'
-                parts = action.split("_")
-                direction = parts[1]
-                loadtype = "LOAD" if direction == "+" else "UNLOAD"
-                # Send GCODE commands in sequence:
-                gcode_sequence = f"""
-                {loadtype}_FILAMENT
-                """
-                # Send the full GCODE sequence
-                self._loop.create_task(self.send_gcodes_async(gcode_sequence.strip().split('\n')))
+            parts = action.split("_")
+            direction = parts[1]
+            target_temp = 200
+            # Send GCODE commands in sequence:
+            gcode_sequence = f"""
+            M83
+            SET_HEATER_TEMPERATURE HEATER=extruder TARGET={target_temp}
+            TEMPERATURE_WAIT SENSOR=extruder MINIMUM={target_temp - 4} MAXIMUM={target_temp + 40}
+            G1 E{direction}{self.extrude_amount} F{self.extrude_speed}
+            """
+            # Send the full GCODE sequence
+            self._loop.create_task(self.send_gcodes_async(gcode_sequence.strip().split('\n')))
         elif action.startswith("start_temp_preset_"):
             material = action.split("_")[3]
             self.temperature_preset_material = material
@@ -662,14 +644,14 @@ class DisplayController:
             self.send_gcode(f"TESTZ Z={direction}{self.z_probe_step}")
         elif action == "abort_zprobe":
             self.send_gcode("ABORT")
-            self._loop.create_task(self._go_back())
+            self._go_back()
         elif action == "save_zprobe":
             self.send_gcode("ACCEPT")
             self.send_gcode("SAVE_CONFIG")
-            self._loop.create_task(self._go_back())
+            self._go_back()
         elif action == "save_config":
             self.send_gcode("SAVE_CONFIG")
-            self._loop.create_task(self._go_back())
+            self._go_back()
         elif action.startswith("set_speed_"):
             parts = action.split("_")
             speed = int(parts[2])
@@ -680,7 +662,7 @@ class DisplayController:
             self.send_speed_update("flow", speed)
         elif action == "reboot_host":
             logger.info("Rebooting Host")
-            self._loop.create_task(self._go_back())
+            self._go_back()
             self._loop.create_task(self._navigate_to_page(PAGE_OVERLAY_LOADING))
             self._loop.create_task(self._send_moonraker_request("machine.reboot"))
         elif action == "shutdown_host":
@@ -693,12 +675,12 @@ class DisplayController:
                     "machine.services.restart", {"service": "klipper"}
                 )
             )
-            self._loop.create_task(self._go_back())
+            self._go_back()
             self._loop.create_task(self._navigate_to_page(PAGE_OVERLAY_LOADING))
         elif action == "firmware_restart":
             logger.info("Firmware Restart")
             self._loop.create_task(self._send_moonraker_request("printer.firmware_restart"))
-            self._loop.create_task(self._go_back())
+            self._go_back()
             self._loop.create_task(self._navigate_to_page(PAGE_OVERLAY_LOADING))
 
     async def _handle_pause_resume(self):
@@ -706,11 +688,11 @@ class DisplayController:
             logger.info("Resuming print")
             await self._send_moonraker_request("printer.print.resume")
         else:
-            await self._go_back()
+            self._go_back()
             await self._navigate_to_page(PAGE_PRINTING_PAUSE)
 
     async def _handle_pause_confirm(self):
-        await self._go_back()
+        self._go_back()
         logger.info("Pausing print")
         await self._send_moonraker_request("printer.print.pause")
 
@@ -736,7 +718,7 @@ class DisplayController:
             str(self.temperature_preset_bed),
         )
         self.config.write_changes()
-        self._loop.create_task(self._go_back())
+        self._go_back()
 
     def send_speed_update(self, speed_type, new_speed):
         if new_speed != 1.0:                        
@@ -829,28 +811,22 @@ class DisplayController:
     def _page_id(self, page):
         return self.display.mapper.map_page(page)
 
-    async def _go_back(self):
+    def _go_back(self):
         if len(self.history) > 1:
-            # 1) If we’re in FILES and can step up a directory, do that first
             if self._get_current_page() == PAGE_FILES and self.current_dir != "":
-                # pop one level
                 self.current_dir = "/".join(self.current_dir.split("/")[:-1])
                 self.files_page = 0
-                # await the reload completely before returning
-                await self._load_files()
+                self._loop.create_task(self._load_files())
                 return
-
-            # 2) Otherwise pop any transition pages and step back
             self.history.pop()
             while len(self.history) > 1 and self.history[-1] in TRANSITION_PAGES:
                 self.history.pop()
             back_page = self.history[-1]
-
-            # 3) Navigate and then run any special handling, strictly in sequence
-            mapped = self.display.mapper.map_page(back_page)
-            await self.display.navigate_to(mapped)
+            self._loop.create_task(
+                self.display.navigate_to(self.display.mapper.map_page(back_page))
+            )
             logger.debug(f"Navigating back to {back_page}")
-            await self.special_page_handling(back_page)
+            self._loop.create_task(self.special_page_handling(back_page))
         else:
             logger.debug("Already at the main page.")
 
@@ -859,7 +835,7 @@ class DisplayController:
 
     async def listen(self):
         await self.display.connect()
-        await self.display.check_valid_version()
+#        await self.display.check_valid_version()
         await self.connect_moonraker()
         ret = await self._send_moonraker_request(
             "printer.objects.subscribe",
@@ -897,8 +873,7 @@ class DisplayController:
             params = {}
         message = self._make_rpc_msg(method, **params)
         fut = self._loop.create_future()
-        async with self.pending_reqs_lock:
-            self.pending_reqs[message["id"]] = fut
+        self.pending_reqs[message["id"]] = fut
         data = json.dumps(message).encode() + b"\x03"
         try:
             self.writer.write(data)
@@ -919,7 +894,7 @@ class DisplayController:
         return ips
 
     async def connect_moonraker(self) -> None:
-        sockfile = os.path.expanduser("~/printer_data/comms/moonraker.sock")
+        sockfile = os.path.expanduser("/tmp/moonraker_ws.sock")
         sockpath = pathlib.Path(sockfile).expanduser().resolve()
         logger.info(f"Connecting to Moonraker at {sockpath}")
         while True:
@@ -994,7 +969,7 @@ class DisplayController:
                 self.execute_action(response_actions[page][component])
                 return
         if component == 0:
-            self._loop.create_task(self._go_back())
+            self._go_back()
             return
         logger.info(f"Unhandled Response: {page} {component}")
 
@@ -1056,8 +1031,7 @@ class DisplayController:
                 continue
             errors_remaining = 10
             if "id" in item:
-                async with self.pending_reqs_lock:
-                    fut = self.pending_reqs.pop(item["id"], None)
+                fut = self.pending_reqs.pop(item["id"], None)
                 if fut is not None:
                     fut.set_result(item)
             elif item["method"] == "notify_status_update":
@@ -1102,12 +1076,11 @@ class DisplayController:
         return None
 
     async def set_data_prepare_screen(self, filename):
-        async with self._filename_lock:
-            metadata = await self.load_metadata(filename)
-            await self.display.set_data_prepare_screen(filename, metadata)
-            await self.load_thumbnail_for_page(
-                filename, self._page_id(PAGE_CONFIRM_PRINT), metadata
-            )
+        metadata = await self.load_metadata(filename)
+        await self.display.set_data_prepare_screen(filename, metadata)
+        await self.load_thumbnail_for_page(
+            filename, self._page_id(PAGE_CONFIRM_PRINT), metadata
+        )
 
     async def load_metadata(self, filename):
         metadata = await self._send_moonraker_request(
@@ -1338,7 +1311,7 @@ class DisplayController:
         await self._send_moonraker_request(
             "printer.gcode.script", {"script": "CALIBRATE_PROBE_Z_OFFSET"}
         )
-        await self._go_back()
+        self._go_back()
 
     def handle_gcode_response(self, response):
         if self.leveling_mode == "screw":
@@ -1346,7 +1319,7 @@ class DisplayController:
                 self.screw_probe_count += 1
                 self._loop.create_task(
                     self.display.update_screw_level_description(
-                        f"Probing Screw No. ({ceil(self.screw_probe_count/3)})..."
+                        f"Probing Screws ({ceil(self.screw_probe_count/3)}/4)..."
                     )
                 )
             if "screw (base) :" in response:
@@ -1368,11 +1341,11 @@ class DisplayController:
             x_count = int(parts[0].strip(" ()"))
             y_count = int(parts[1][:-1].strip(" ()"))
             self.bed_leveling_counts = [x_count, y_count]
-        elif response.startswith("// Adapted mesh bounds"):
+        elif response.startswith("// bed_mesh: generated points"):
             self.bed_leveling_probed_count = 0
             if self._get_current_page() != PAGE_PRINTING_KAMP:
-                self._loop.create_task(self._navigate_to_page(PAGE_PRINTING_KAMP, clear_history=True))
-        elif response.startswith("// probe at"):
+                self._loop.create_task(self._navigate_to_page(PAGE_PRINTING_KAMP))
+        elif response.startswith("// probe at "):
             if self._get_current_page() != PAGE_PRINTING_KAMP:
                 # We are not leveling, likely response came from manual probe e.g. from console,
                 # Skip updating the state, otherwise it messes up bed leveling screen when printing
@@ -1408,7 +1381,7 @@ class DisplayController:
                 if self.leveling_mode == "full_bed":
                     self._loop.create_task(self.display.show_bed_mesh_final())
                 else:
-                    self._loop.create_task(self._go_back())
+                    self._go_back()
 
     async def run_shutdown_sequence(self):
         await self.display.show_shutdown_screens()
@@ -1416,20 +1389,18 @@ class DisplayController:
         await self._send_moonraker_request("machine.shutdown")
 
 
-
 loop = asyncio.get_event_loop()
 config_observer = Observer()
 
 try:
-    # load config and inject the loop
     config = ConfigHandler(config_file, logger)
-    controller = DisplayController(config, loop)
 
-    # called when the config file changes
+    controller = DisplayController(config)
+    controller._loop = loop
+
     def handle_wd_callback(notifier):
         controller.handle_config_change()
 
-    # called when the klipper/moonraker socket appears
     def handle_sock_changes(notifier):
         if notifier.event_type == "created":
             logger.info(
@@ -1437,49 +1408,41 @@ try:
             )
             controller.klipper_restart_event.set()
 
-    # watch the config file
     config_patterns = ["display_connector.cfg"]
+    socket_patterns = ["klippy.sock", "moonraker.sock", "klippy_uds"]
+    
+    # Initialize the config event handler
     config_event_handler = PatternMatchingEventHandler(
-        patterns=config_patterns,
-        ignore_patterns=None,
-        ignore_directories=True,
-        case_sensitive=True,
+        patterns=config_patterns, 
+        ignore_patterns=None, 
+        ignore_directories=True, 
+        case_sensitive=True
     )
     config_event_handler.on_modified = handle_wd_callback
     config_event_handler.on_created = handle_wd_callback
-    config_observer.schedule(
-        config_event_handler, config.file, recursive=False
-    )
 
-    # watch the socket directory
-    socket_patterns = ["klippy.sock", "moonraker.sock"]
+    # Initialize the socket event handler
     socket_event_handler = PatternMatchingEventHandler(
-        patterns=socket_patterns,
-        ignore_patterns=None,
-        ignore_directories=True,
-        case_sensitive=True,
+        patterns=socket_patterns, 
+        ignore_patterns=None, 
+        ignore_directories=True, 
+        case_sensitive=True
     )
     socket_event_handler.on_modified = handle_sock_changes
     socket_event_handler.on_created = handle_sock_changes
     socket_event_handler.on_deleted = handle_sock_changes
-    config_observer.schedule(
-        socket_event_handler, comms_directory, recursive=False
-    )
 
-    # start watching files
+    # Schedule the observers
+    config_observer.schedule(config_event_handler, config.file, recursive=False)
+    config_observer.schedule(socket_event_handler, comms_directory, recursive=False)
     config_observer.start()
 
-    # after one second, start pumping display events
     loop.call_later(1, controller.start_listening)
-
-    # hand control over to asyncio
     loop.run_forever()
-
 except Exception as e:
     logger.error("Error communicating...: " + str(e))
     logger.error(traceback.format_exc())
 finally:
     config_observer.stop()
-    if config_observer.is_alive():
-        config_observer.join()
+    config_observer.join()
     loop.close()

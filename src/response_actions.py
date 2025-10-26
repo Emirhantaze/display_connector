@@ -28,6 +28,8 @@ response_actions = {
         2: "page " + PAGE_PREPARE_MOVE,
         3: "page " + PAGE_SETTINGS,
         4: "page " + PAGE_LEVELING,
+        5: "page " + PAGE_PREPARE_TEMP,
+        6: "page " + PAGE_LIGHTS,
     },
     # File Picker
     2: {
@@ -38,6 +40,7 @@ response_actions = {
         9: "open_file_2",
         10: "open_file_3",
         11: "open_file_4",
+        12: "open_file_5",
     },
     # Level Picker
     3: {
@@ -126,8 +129,6 @@ response_actions = {
         7: "temp_adjust_+",
         8: "temp_reset",
         9: "temp_heater_heater_bed_outer",
-        10: "extrude_+",
-        11: "extrude_-",
         12: "page " + PAGE_PRINTING_SPEED,
         13: "page " + PAGE_PRINTING_ADJUST,
     },
@@ -141,8 +142,6 @@ response_actions = {
         6: "temp_adjust_-",
         7: "temp_adjust_+",
         8: "temp_reset",
-        10: "extrude_+",
-        11: "extrude_-",
         12: "page " + PAGE_PRINTING_SPEED,
         13: "page " + PAGE_PRINTING_ADJUST,
     },
@@ -187,7 +186,7 @@ response_actions = {
         8: "page " + PAGE_PREPARE_EXTRUDER,
     },
     # Confirm Emergency Stop
-    108: {0: "emergency_stop", 1: "go_back"},
+    106: {0: "emergency_stop", 1: "go_back"},
     # Printing Adjust
     127: {
         1: "zoffsetchange_0.01",

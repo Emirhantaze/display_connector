@@ -1,0 +1,13 @@
+[Unit]
+Description=Moonraker WebSocket bridge for Klipper (start before display)
+After=klipper.service klipper-mcu.service moonraker.service
+Wants=klipper.service moonraker.service
+
+[Service]
+Type=simple
+ExecStart=/home/mks/display_connector/dist/moonraker-ws
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

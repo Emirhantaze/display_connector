@@ -145,6 +145,9 @@ class OpenNeptuneDisplayMapper(Mapper):
                             [build_accessor(self.map_page(PAGE_PRINTING), "x_pos")],
                             formatter=lambda x: f"X[{x:3.2f}]",
                         ),
+                        MappingLeaf(
+                            [build_accessor(self.map_page(PAGE_PREPARE_MOVE), "x_pos")],
+                        ),
                     ],
                     1: [
                         MappingLeaf(
@@ -154,9 +157,13 @@ class OpenNeptuneDisplayMapper(Mapper):
                             [build_accessor(self.map_page(PAGE_PRINTING), "y_pos")],
                             formatter=lambda y: f"Y[{y:3.2f}]",
                         ),
+                        MappingLeaf(
+                            [build_accessor(self.map_page(PAGE_PREPARE_MOVE), "y_pos")]
+                        ),
                     ],
                     2: [
-                        MappingLeaf([build_accessor(self.map_page(PAGE_MAIN), "z_pos")])
+                        MappingLeaf([build_accessor(self.map_page(PAGE_MAIN), "z_pos")]),
+                        MappingLeaf([build_accessor(self.map_page(PAGE_PREPARE_MOVE), "z_pos")])
                     ],
                 },
                 "live_velocity": [
@@ -239,6 +246,10 @@ class OpenNeptuneDisplayMapper(Mapper):
                         formatter=format_percent,
                     ),
                     MappingLeaf(
+                        [build_accessor(self.map_page(PAGE_MAIN), "Fan_Pwr")],
+                        formatter=format_percent,
+                    ),
+                    MappingLeaf(
                         [build_accessor(self.map_page(PAGE_SETTINGS), "fanstatue")],
                         field_type="pic",
                         formatter=lambda x: "77" if int(x) == 1 else "76",
@@ -264,7 +275,11 @@ class OpenNeptuneDisplayMapper(Mapper):
                         [build_accessor(self.map_page(PAGE_LIGHTS), "led1")],
                         field_type="pic",
                         formatter=lambda x: "77" if int(x) == 1 else "76",
+                    ),
+                    MappingLeaf(
+                        [build_accessor(self.map_page(PAGE_MAIN), "Light_Stat")]
                     )
+                    
                 ]
             },
             "output_pin Frame_Light": {
@@ -273,6 +288,9 @@ class OpenNeptuneDisplayMapper(Mapper):
                         [build_accessor(self.map_page(PAGE_LIGHTS), "led2")],
                         field_type="pic",
                         formatter=lambda x: "77" if int(x) == 1 else "76",
+                    ),
+                    MappingLeaf(
+                        [build_accessor(self.map_page(PAGE_MAIN), "Light_Stat")]
                     )
                 ]
             },
@@ -319,7 +337,7 @@ class OpenNeptuneDisplayMapper(Mapper):
 
 
 class OpenNeptuneDisplayCommunicator(ElegooDisplayCommunicator):
-    supported_firmware_versions = ["0.1.5"]
+    supported_firmware_versions = ["ON0.1.5"]
 
     bed_leveling_box_size = 20
 
