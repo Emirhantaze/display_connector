@@ -25,7 +25,12 @@ if [[ ! -x "$PIP" ]]; then
 fi
 
 # Activate environment so PATH picks tools from it
+# FIX: Temporarily disable unbound variable check (`-u`) because the 'activate' script 
+# often tries to read an unset variable like $PS1 when run non-interactively.
+set +u
 source "$ENV_DIR/bin/activate"
+set -u
+# End Fix
 
 # Ensure PyInstaller is available
 if ! command -v pyinstaller >/dev/null 2>&1; then
@@ -58,5 +63,3 @@ echo "[build] Building moonraker-ws.py → dist/moonraker-ws"
 pyinstaller --onefile --name moonraker-ws moonraker-ws.py
 
 echo "[done] Artifacts available in $(pwd)/dist"
-
-
