@@ -261,7 +261,11 @@ custom_touch_actions = {
         (24, 158, 248, 208): "reboot_host",       # Reboot Host button
         (24, 212, 248, 262): "reboot_klipper",    # Reboot Klipper button
         (24, 266, 248, 316): "firmware_restart",  # Firmware Restart button (new)
-        (24, 320, 248, 370): "go_back",           # Back button
+        (24, 320, 248, 370): "go_back",  # Back button -> previous page
     },
     "printing_kamp": {(40, 400, 230, 450): "save_config"},
+    # Virtual power button on Prepare Temp (top-right area)
+    "prepare_temp": {
+        (260, 0, 320, 40): "page " + PAGE_SHUTDOWN_DIALOG,
+    },
 }

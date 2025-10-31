@@ -401,6 +401,11 @@ class ElegooDisplayCommunicator(DisplayCommunicator):
         elif current_page == PAGE_LIGHTS:
             await self.write("t0.txt=\"Part Light\"")
             await self.write("t1.txt=\"Frame Light\"")
+        elif current_page == PAGE_PREPARE_TEMP:
+            # Draw a small runtime "Power" button at the top-right (N4 Pro only)
+            if getattr(self, "has_two_beds", False):
+                await self.write("fill 260,0,60,40,10665")
+                await self.write('xstr 260,10,60,20,1,65535,10665,1,1,1,"Power"')
         elif current_page == PAGE_PRINTING:
             await self.write("printvalue.xcen=0")
             await self.write("move printvalue,13,267,13,267,0,10")
