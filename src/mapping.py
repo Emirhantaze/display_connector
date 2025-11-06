@@ -39,6 +39,7 @@ PAGE_LEVELING_Z_OFFSET_ADJUST = "leveling_z_offset_adjust"
 PAGE_OVERLAY_LOADING = "wifi_scaning"
 
 PAGE_LIGHTS = "lights"
+PAGE_EXTRUDER_SELECT = "extruder_select"
 
 
 def format_temp(value):

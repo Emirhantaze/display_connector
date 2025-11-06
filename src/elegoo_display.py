@@ -37,6 +37,7 @@ from src.mapping import (
     PAGE_OVERLAY_LOADING,
     PAGE_LIGHTS,
     PAGE_SHUTDOWN_DIALOG,
+    PAGE_EXTRUDER_SELECT,
     format_temp,
     format_time,
     format_percent,
@@ -68,6 +69,7 @@ class ElegooDisplayMapper(Mapper):
         PAGE_LEVELING: "file2",
         PAGE_LEVELING_SCREW_ADJUST: "assist_level",
         PAGE_LEVELING_Z_OFFSET_ADJUST: "leveldata_36",
+        PAGE_EXTRUDER_SELECT: "file2",  # Uses same page as leveling
         PAGE_CONFIRM_PRINT: "askprint",
         PAGE_PRINTING: "printpause",
         PAGE_PRINTING_KAMP: "leveling_121",
@@ -404,8 +406,8 @@ class ElegooDisplayCommunicator(DisplayCommunicator):
         elif current_page == PAGE_PREPARE_TEMP:
             # Draw a small runtime "Power" button at the top-right (N4 Pro only)
             if getattr(self, "has_two_beds", False):
-                await self.write("fill 260,0,60,40,10665")
-                await self.write('xstr 260,10,60,20,1,65535,10665,1,1,1,"Power"')
+                await self.write("fill 50,5,172,35,BLACK")
+                await self.write('xstr 0,5,272,40,1,65535,10665,1,1,3,"Select Extruder"')
         elif current_page == PAGE_PRINTING:
             await self.write("printvalue.xcen=0")
             await self.write("move printvalue,13,267,13,267,0,10")
@@ -420,6 +422,9 @@ class ElegooDisplayCommunicator(DisplayCommunicator):
             await self.write('b[19].txt="Z-Probe Offset"')
             await self.write('b[20].txt="Full Bed Level"')
             self.leveling_mode = None
+        elif current_page == PAGE_EXTRUDER_SELECT:
+            # This will be handled by draw_extruder_select_menu method
+            pass
         elif current_page == PAGE_PRINTING_DIALOG_SPEED:
             await self.write("b[3].maxval=200")
         elif current_page == PAGE_PRINTING_DIALOG_FLOW:
@@ -547,6 +552,33 @@ class ElegooDisplayCommunicator(DisplayCommunicator):
         await self.write(
             f'{self.mapper.map_page(PAGE_PREPARE_EXTRUDER)}.b[9].txt="{extrude_speed}"'
         )
+
+    async def draw_extruder_select_menu(self, extruder_names):
+        """Draw the extruder selection menu dynamically based on extruder count"""
+        page_id = self.mapper.map_page(PAGE_EXTRUDER_SELECT)
+        await self.write(f'{page_id}.b[12].txt="Select Extruder"')
+        
+        # Button IDs: b[18], b[19], b[20] for up to 3 extruders
+        button_ids = [18, 19, 20]
+        
+        # Draw menu items for each extruder
+        for i, extruder_name in enumerate(extruder_names):
+            if i < len(button_ids):
+                # Format: "Select First Extruder", "Select Second Extruder", etc.
+                if i == 0:
+                    label = "Select First Extruder"
+                elif i == 1:
+                    label = "Select Second Extruder"
+                elif i == 2:
+                    label = "Select Third Extruder"
+                else:
+                    label = f"Select Extruder {i + 1}"
+                
+                await self.write(f'{page_id}.b[{button_ids[i]}].txt="{label}"')
+        
+        # Clear remaining buttons
+        for i in range(len(extruder_names), len(button_ids)):
+            await self.write(f'{page_id}.b[{button_ids[i]}].txt=""')
 
     async def update_wifi_ui(self):
         has_wifi, ssid, rssi_category = get_wlan0_status()

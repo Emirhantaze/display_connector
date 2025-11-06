@@ -35,6 +35,7 @@ from src.mapping import (
     PAGE_OVERLAY_LOADING,
     PAGE_LIGHTS,
     PAGE_SHUTDOWN_DIALOG,
+    PAGE_EXTRUDER_SELECT,
     format_temp,
     format_time,
     format_percent,
@@ -62,6 +63,7 @@ class OpenNeptuneDisplayMapper(Mapper):
         PAGE_LEVELING: "file2",
         PAGE_LEVELING_SCREW_ADJUST: "assist_level",
         PAGE_LEVELING_Z_OFFSET_ADJUST: "leveldata_36",
+        PAGE_EXTRUDER_SELECT: "file2",  # Uses same page as leveling
         PAGE_CONFIRM_PRINT: "askprint",
         PAGE_PRINTING: "printpause",
         PAGE_PRINTING_KAMP: "leveling_121",
@@ -398,6 +400,9 @@ class OpenNeptuneDisplayCommunicator(ElegooDisplayCommunicator):
             await self.write('b[19].txt="Z-Probe Offset"')
             await self.write('b[20].txt="Full Bed Level"')
             self.leveling_mode = None
+        elif current_page == PAGE_EXTRUDER_SELECT:
+            # This will be handled by draw_extruder_select_menu method
+            pass
         elif current_page == PAGE_PRINTING_DIALOG_SPEED:
             await self.write("b[3].maxval=200")
         elif current_page == PAGE_PRINTING_DIALOG_FLOW:
