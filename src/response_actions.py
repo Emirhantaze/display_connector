@@ -44,10 +44,16 @@ response_actions = {
         12: "open_file_5",
     },
     # Level Picker
-    3: {
-        # 7: "page " + PAGE_LEVELING_SCREW_ADJUST,
-        # 8: "page " + PAGE_LEVELING_Z_OFFSET_ADJUST,
-        # 9: "begin_full_bed_level",
+    PAGE_LEVELING: {
+        7: "page " + PAGE_LEVELING_SCREW_ADJUST,
+        8: "page " + PAGE_LEVELING_Z_OFFSET_ADJUST,
+        9: "begin_full_bed_level",
+    },
+    PAGE_EXTRUDER_SELECT: {
+        7: "select_extruder_0",
+        8: "select_extruder_1",
+        9: "select_extruder_2",
+        
     },
     # Prepare Temperature (Pro Only)
     6: {
@@ -269,34 +275,5 @@ custom_touch_actions = {
     "prepare_temp": {
         (50, 5, 50+172, 40): "page " + PAGE_EXTRUDER_SELECT,
     },
-    # Leveling page custom touch areas
-    # Format: (min_x, min_y, max_x, max_y): "action"
-    # Coordinates are in pixels - adjust based on your screen layout
-    # These replace the original button actions (7, 8, 9)
-    "leveling": {
-        # Button 7 action: Screw Adjust
-        # Adjust coordinates to match your button 7 location on screen
-        (10, 54, 257, 114): "page " + PAGE_LEVELING_SCREW_ADJUST,
-        # Button 8 action: Z Offset Adjust
-        # Adjust coordinates to match your button 8 location on screen
-        (10, 127, 257, 187): "page " + PAGE_LEVELING_Z_OFFSET_ADJUST,
-        # Button 9 action: Begin Full Bed Level
-        # Adjust coordinates to match your button 9 location on screen
-        (10, 200, 257, 260): "begin_full_bed_level",
-    },
-    # Extruder selection page custom touch areas
-    # Uses same "file2" page as leveling, but with different menu items
-    # Supports dynamic extruder count (configured in display_connector.cfg)
-    # Action format: select_extruder_0, select_extruder_1, select_extruder_2, etc.
-    "extruder_select": {
-        # Menu button 1: Select first extruder (extruder)
-        # Adjust coordinates to match your button location on screen
-        (10, 54, 257, 114): "select_extruder_0",
-        # Menu button 2: Select second extruder (extruder1)
-        # Adjust coordinates to match your button location on screen
-        (10, 127, 257, 187): "select_extruder_1",
-        # Menu button 3: Select third extruder (extruder2) - uncomment if needed
-        (10, 200, 257, 260): "select_extruder_2",
-        # Add more buttons for additional extruders following the same pattern
-    },
+
 }

@@ -262,6 +262,7 @@ class DisplayController:
             if self.selected_extruder_index >= self.extruder_count:
                 self.selected_extruder_index = 0
                 self.selected_extruder_name = self.extruder_names[0]
+                self.display.selected_extruder_name = self.selected_extruder_name
                 logger.info(f"Selected extruder index out of range, resetting to first extruder")
 
         if "LOGGING" in self.config:
@@ -487,6 +488,7 @@ class DisplayController:
                 if 0 <= extruder_index < len(self.extruder_names):
                     self.selected_extruder_index = extruder_index
                     self.selected_extruder_name = self.extruder_names[extruder_index]
+                    self.display.selected_extruder_name = self.selected_extruder_name
                     logger.info(f"Selected extruder {extruder_index} ({self.selected_extruder_name})")
                     self._loop.create_task(self._navigate_to_page(PAGE_PREPARE_TEMP))
                 else:
@@ -1053,10 +1055,18 @@ class DisplayController:
             if component in response_actions[page]:
                 self.execute_action(response_actions[page][component])
                 return
+        elif page == 3 and self._get_current_page()==PAGE_EXTRUDER_SELECT:
+            if component in response_actions[PAGE_EXTRUDER_SELECT]:
+                self.execute_action(response_actions[PAGE_EXTRUDER_SELECT][component])
+                return
+        elif page == 3 and self._get_current_page()==PAGE_LEVELING:
+            if component in response_actions[PAGE_LEVELING]:
+                self.execute_action(response_actions[PAGE_LEVELING][component])
+                return
         if component == 0:
             self._go_back()
             return
-        logger.info(f"Unhandled Response: {page} {component}")
+        logger.info(f"Unhandled Response: {page} {component}, current page: {self._get_current_page()}")
 
     def handle_input(self, page, component, value):
         if page in input_actions:
