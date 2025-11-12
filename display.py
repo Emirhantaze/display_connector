@@ -58,6 +58,7 @@ from src.mapping import (
     PAGE_PRINTING_SPEED,
     PAGE_PRINTING_ADJUST,
     PAGE_OVERLAY_LOADING,
+    PAGE_EXTRUDER_SELECT,
     format_time,
 )
 from src.colors import BACKGROUND_SUCCESS, BACKGROUND_WARNING
@@ -96,6 +97,7 @@ TABBED_PAGES = [
     PAGE_PRINTING_ADJUST,
     PAGE_PRINTING_FILAMENT,
     PAGE_PRINTING_SPEED,
+    PAGE_EXTRUDER_SELECT,
 ]
 
 TRANSITION_PAGES = [PAGE_OVERLAY_LOADING]
@@ -129,6 +131,14 @@ class DisplayController:
 
     def __init__(self, config):
         self.config = config
+        # Extruder configuration - will be loaded from config
+        self.extruder_count = 1  # Default to 1 extruder
+        self.extruder_names = []  # Will be populated: ["extruder", "extruder1", ...]
+        
+        # Track selected extruder (0 = "extruder", 1 = "extruder1", etc.)
+        self.selected_extruder_index = 0
+        self.selected_extruder_name = "extruder"  # Default to first extruder
+        
         self._handle_config()
         self.connected = False
 
@@ -168,7 +178,6 @@ class DisplayController:
 
         self.printing_selected_heater = "extruder"
         self.printing_target_temps = {
-            "extruder": 0,
             "heater_bed": 0,
             "heater_bed_outer": 0,
         }
@@ -222,6 +231,39 @@ class DisplayController:
                 self.filament_sensor_name = self.config["general"][
                     "filament_sensor_name"
                 ]
+            # Load extruder count from config
+            self.extruder_count = self.config["general"].getint("extruder_count", fallback=1)
+            if self.extruder_count < 1:
+                self.extruder_count = 1
+                logger.warning("extruder_count must be at least 1, defaulting to 1")
+            if self.extruder_count > 10:
+                self.extruder_count = 10
+                logger.warning("extruder_count limited to 10, capping at 10")
+            
+            # Generate extruder names: ["extruder", "extruder1", "extruder2", ...]
+            self.extruder_names = []
+            for i in range(self.extruder_count):
+                if i == 0:
+                    self.extruder_names.append("extruder")
+                else:
+                    self.extruder_names.append(f"extruder{i}")
+            
+            logger.info(f"Configured for {self.extruder_count} extruder(s): {', '.join(self.extruder_names)}")
+            
+            # Initialize printing_target_temps for all extruders
+            self.printing_target_temps = {
+                "heater_bed": 0,
+                "heater_bed_outer": 0,
+            }
+            for extruder_name in self.extruder_names:
+                self.printing_target_temps[extruder_name] = 0
+            
+            # Ensure selected extruder is valid
+            if self.selected_extruder_index >= self.extruder_count:
+                self.selected_extruder_index = 0
+                self.selected_extruder_name = self.extruder_names[0]
+                self.display.selected_extruder_name = self.selected_extruder_name
+                logger.info(f"Selected extruder index out of range, resetting to first extruder")
 
         if "LOGGING" in self.config:
             if "file_log_level" in self.config["LOGGING"]:
@@ -316,6 +358,9 @@ class DisplayController:
             )
         elif current_page == PAGE_LEVELING:
             self.leveling_mode = None
+        elif current_page == PAGE_EXTRUDER_SELECT:
+            # Draw extruder selection menu dynamically
+            await self.display.draw_extruder_select_menu(self.extruder_names)
         elif current_page == PAGE_LEVELING_SCREW_ADJUST:
             await self.display.draw_initial_screw_leveling()
             self._loop.create_task(self.handle_screw_leveling())
@@ -346,6 +391,13 @@ class DisplayController:
         self.send_gcode(f"G91\nG1 {axis}{distance} F{int(speed) * 60}\nG90")
 
     async def _navigate_to_page(self, page, clear_history=False):
+        # Intercept navigation to prepare_temp - redirect to extruder_select first
+        # unless we're already coming from extruder_select
+        if page == PAGE_PREPARE_TEMP:
+            if not self.history or self.history[-1] != PAGE_EXTRUDER_SELECT:
+                # First time opening prepare_temp, show extruder select first
+                page = PAGE_EXTRUDER_SELECT
+        
         if not self.history or self.history[-1] != page:
             # Handle page navigation within tabbed pages
             if page in TABBED_PAGES and self.history and self.history[-1] in TABBED_PAGES:
@@ -404,6 +456,9 @@ class DisplayController:
             self._toggle_fan(self.fan_state)
         elif action.startswith("printer.send_gcode"):
             gcode = action.split("'")[1]
+            # Replace "extruder" with selected extruder name if present
+            if "HEATER=extruder" in gcode:
+                gcode = gcode.replace("HEATER=extruder", f"HEATER={self.selected_extruder_name}")
             self.send_gcode(gcode)
         elif action == "go_back":
             self._go_back()
@@ -426,14 +481,34 @@ class DisplayController:
         elif action == "files_picker":
             self._loop.create_task(self._navigate_to_page(PAGE_FILES))
             self._loop.create_task(self._load_files())
+        elif action.startswith("select_extruder_"):
+            # Handle dynamic extruder selection: select_extruder_0, select_extruder_1, etc.
+            try:
+                extruder_index = int(action.split("_")[-1])
+                if 0 <= extruder_index < len(self.extruder_names):
+                    self.selected_extruder_index = extruder_index
+                    self.selected_extruder_name = self.extruder_names[extruder_index]
+                    self.display.selected_extruder_name = self.selected_extruder_name
+                    logger.info(f"Selected extruder {extruder_index} ({self.selected_extruder_name})")
+                    self._loop.create_task(self._navigate_to_page(PAGE_PREPARE_TEMP))
+                else:
+                    logger.warning(f"Invalid extruder index: {extruder_index}")
+            except (ValueError, IndexError) as e:
+                logger.error(f"Error parsing extruder selection action: {action}, error: {e}")
 
         elif action.startswith("temp_heater_"):
             parts = action.split("_")
-            self.printing_selected_heater = "_".join(parts[2:])
+            heater = "_".join(parts[2:])
+            # If selecting "extruder", use the selected extruder name
+            if heater == "extruder":
+                heater = self.selected_extruder_name
+            self.printing_selected_heater = heater
+            # Use the actual heater name for display, but track in printing_target_temps
+            display_heater = "extruder" if heater in ["extruder", "extruder1"] else heater
             self._loop.create_task(
                 self.display.update_printing_heater_settings_ui(
-                    self.printing_selected_heater,
-                    self.printing_target_temps[self.printing_selected_heater],
+                    display_heater,
+                    self.printing_target_temps.get(heater, 0),
                 )
             )
         elif action.startswith("temp_increment_"):
@@ -447,10 +522,12 @@ class DisplayController:
         elif action.startswith("temp_adjust_"):
             parts = action.split("_")
             direction = parts[2]
-            current_temp = self.printing_target_temps[self.printing_selected_heater]
+            # Get the actual heater name (may be extruder or extruder1)
+            actual_heater = self.printing_selected_heater
+            current_temp = self.printing_target_temps.get(actual_heater, 0)
             self.send_gcode(
                 "SET_HEATER_TEMPERATURE HEATER="
-                + self.printing_selected_heater
+                + actual_heater
                 + " TARGET="
                 + str(
                     current_temp
@@ -461,9 +538,11 @@ class DisplayController:
                 )
             )
         elif action == "temp_reset":
+            # Get the actual heater name (may be extruder or extruder1)
+            actual_heater = self.printing_selected_heater
             self.send_gcode(
                 "SET_HEATER_TEMPERATURE HEATER="
-                + self.printing_selected_heater
+                + actual_heater
                 + " TARGET=0"
             )
         elif action.startswith("speed_type_"):
@@ -539,6 +618,9 @@ class DisplayController:
             parts = action.split("_")
             target = parts[-1]
             heater = "_".join(parts[2:-1])
+            # Use selected extruder if heater is "extruder"
+            if heater == "extruder":
+                heater = self.selected_extruder_name
             self.send_gcode(
                 "SET_HEATER_TEMPERATURE HEATER=" + heater + " TARGET=" + target
             )
@@ -553,7 +635,7 @@ class DisplayController:
                 extruder = TEMP_DEFAULTS[material][0]
                 heater_bed = TEMP_DEFAULTS[material][1]
             gcodes = [
-                f"SET_HEATER_TEMPERATURE HEATER=extruder TARGET={extruder}",
+                f"SET_HEATER_TEMPERATURE HEATER={self.selected_extruder_name} TARGET={extruder}",
                 f"SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET={heater_bed}",
             ]
             if self.display.model == MODEL_N4_PRO:
@@ -575,11 +657,11 @@ class DisplayController:
             parts = action.split("_")
             direction = parts[1]
             target_temp = 200
-            # Send GCODE commands in sequence:
+            # Send GCODE commands in sequence using selected extruder:
             gcode_sequence = f"""
             M83
-            SET_HEATER_TEMPERATURE HEATER=extruder TARGET={target_temp}
-            TEMPERATURE_WAIT SENSOR=extruder MINIMUM={target_temp - 4} MAXIMUM={target_temp + 40}
+            SET_HEATER_TEMPERATURE HEATER={self.selected_extruder_name} TARGET={target_temp}
+            TEMPERATURE_WAIT SENSOR={self.selected_extruder_name} MINIMUM={target_temp - 4} MAXIMUM={target_temp + 40}
             G1 E{direction}{self.extrude_amount} F{self.extrude_speed}
             """
             # Send the full GCODE sequence
@@ -837,6 +919,11 @@ class DisplayController:
         await self.display.connect()
 #        await self.display.check_valid_version()
         await self.connect_moonraker()
+        # Build extruder subscriptions dynamically
+        extruder_objects = {}
+        for extruder_name in self.extruder_names:
+            extruder_objects[extruder_name] = ["temperature", "target"]
+        
         ret = await self._send_moonraker_request(
             "printer.objects.subscribe",
             {
@@ -845,7 +932,7 @@ class DisplayController:
                     "motion_report": ["live_position", "live_velocity"],
                     "fan": ["speed"],
                     "heater_bed": ["temperature", "target"],
-                    "extruder": ["temperature", "target"],
+                    **extruder_objects,  # Add all extruders dynamically
                     "heater_generic heater_bed_outer": ["temperature", "target"],
                     "display_status": ["progress"],
                     "print_stats": [
@@ -968,10 +1055,18 @@ class DisplayController:
             if component in response_actions[page]:
                 self.execute_action(response_actions[page][component])
                 return
+        elif page == 3 and self._get_current_page()==PAGE_EXTRUDER_SELECT:
+            if component in response_actions[PAGE_EXTRUDER_SELECT]:
+                self.execute_action(response_actions[PAGE_EXTRUDER_SELECT][component])
+                return
+        elif page == 3 and self._get_current_page()==PAGE_LEVELING:
+            if component in response_actions[PAGE_LEVELING]:
+                self.execute_action(response_actions[PAGE_LEVELING][component])
+                return
         if component == 0:
             self._go_back()
             return
-        logger.info(f"Unhandled Response: {page} {component}")
+        logger.info(f"Unhandled Response: {page} {component}, current page: {self._get_current_page()}")
 
     def handle_input(self, page, component, value):
         if page in input_actions:
@@ -1235,11 +1330,14 @@ class DisplayController:
         if "configfile" in new_data:
             self.handle_machine_config_change(new_data["configfile"])
 
-        if "extruder" in new_data:
-            target = new_data["extruder"].get("target")
-            if target is not None:
-                self.printing_target_temps["extruder"] = target
-                self.printer_heating_value_changed("extruder", target)
+        # Handle all extruders dynamically
+        for extruder_name in self.extruder_names:
+            if extruder_name in new_data:
+                target = new_data[extruder_name].get("target")
+                if target is not None:
+                    self.printing_target_temps[extruder_name] = target
+                    if extruder_name == self.selected_extruder_name:
+                        self.printer_heating_value_changed(extruder_name, target)
 
         if "heater_bed" in new_data:
             target = new_data["heater_bed"].get("target")
@@ -1274,13 +1372,27 @@ class DisplayController:
                     )
                 )
 
-        self._loop.create_task(self.display.update_data(new_data, data_mapping))
+        # Filter data for display - only show selected extruder's temperature
+        display_data = new_data.copy()
+        # Remove all non-selected extruders from display data to avoid conflicts
+        for extruder_name in self.extruder_names:
+            if extruder_name != self.selected_extruder_name and extruder_name in display_data:
+                display_data.pop(extruder_name, None)
+        
+        # Replace "extruder" key with selected extruder data for display compatibility
+        if self.selected_extruder_name != "extruder" and self.selected_extruder_name in display_data:
+            display_data["extruder"] = display_data[self.selected_extruder_name]
+        
+        self._loop.create_task(self.display.update_data(display_data, data_mapping))
 
     def printer_heating_value_changed(self, heater, new_value):
+            # Check if this heater matches the selected one (handle both extruder names)
             if heater == self.printing_selected_heater:
+                # Use "extruder" for display if it's an extruder
+                display_heater = "extruder" if heater in ["extruder", "extruder1"] else heater
                 self._loop.create_task(
                     self.display.update_printing_heater_settings_ui(
-                        self.printing_selected_heater,
+                        display_heater,
                         new_value,
                     )
                 )

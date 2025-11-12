@@ -19,6 +19,7 @@ from src.mapping import (
     PAGE_PRINTING_DIALOG_FLOW,
     PAGE_LIGHTS,
     PAGE_SHUTDOWN_DIALOG,
+    PAGE_EXTRUDER_SELECT,
 )
 
 response_actions = {
@@ -43,10 +44,16 @@ response_actions = {
         12: "open_file_5",
     },
     # Level Picker
-    3: {
+    PAGE_LEVELING: {
         7: "page " + PAGE_LEVELING_SCREW_ADJUST,
         8: "page " + PAGE_LEVELING_Z_OFFSET_ADJUST,
         9: "begin_full_bed_level",
+    },
+    PAGE_EXTRUDER_SELECT: {
+        7: "select_extruder_0",
+        8: "select_extruder_1",
+        9: "select_extruder_2",
+        
     },
     # Prepare Temperature (Pro Only)
     6: {
@@ -261,7 +268,12 @@ custom_touch_actions = {
         (24, 158, 248, 208): "reboot_host",       # Reboot Host button
         (24, 212, 248, 262): "reboot_klipper",    # Reboot Klipper button
         (24, 266, 248, 316): "firmware_restart",  # Firmware Restart button (new)
-        (24, 320, 248, 370): "go_back",           # Back button
+        (24, 320, 248, 370): "go_back",  # Back button -> previous page
     },
     "printing_kamp": {(40, 400, 230, 450): "save_config"},
+    # Virtual power button on Prepare Temp (top-right area)
+    "prepare_temp": {
+        (50, 5, 50+172, 40): "page " + PAGE_EXTRUDER_SELECT,
+    },
+
 }

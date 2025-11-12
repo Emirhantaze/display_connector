@@ -35,6 +35,7 @@ from src.mapping import (
     PAGE_OVERLAY_LOADING,
     PAGE_LIGHTS,
     PAGE_SHUTDOWN_DIALOG,
+    PAGE_EXTRUDER_SELECT,
     format_temp,
     format_time,
     format_percent,
@@ -62,6 +63,7 @@ class OpenNeptuneDisplayMapper(Mapper):
         PAGE_LEVELING: "file2",
         PAGE_LEVELING_SCREW_ADJUST: "assist_level",
         PAGE_LEVELING_Z_OFFSET_ADJUST: "leveldata_36",
+        PAGE_EXTRUDER_SELECT: "file2",  # Uses same page as leveling
         PAGE_CONFIRM_PRINT: "askprint",
         PAGE_PRINTING: "printpause",
         PAGE_PRINTING_KAMP: "leveling_121",
@@ -379,6 +381,11 @@ class OpenNeptuneDisplayCommunicator(ElegooDisplayCommunicator):
                 + str(BACKGROUND_GRAY)
                 + ',1,1,1,"github.com/OpenNeptune3D"'
             )
+        elif current_page == PAGE_PREPARE_TEMP:
+            # Draw a small runtime "Power" button at the top-right (N4 Pro only)
+            if getattr(self, "has_two_beds", False):
+                await self.write("fill 260,0,60,40,10665")
+                await self.write('xstr 260,10,60,20,1,65535,10665,1,1,1,"Power"')
         elif current_page == PAGE_PRINTING:
             await self.write("printvalue.xcen=0")
             await self.write("move printvalue,13,267,13,267,0,10")
@@ -393,6 +400,9 @@ class OpenNeptuneDisplayCommunicator(ElegooDisplayCommunicator):
             await self.write('b[19].txt="Z-Probe Offset"')
             await self.write('b[20].txt="Full Bed Level"')
             self.leveling_mode = None
+        elif current_page == PAGE_EXTRUDER_SELECT:
+            # This will be handled by draw_extruder_select_menu method
+            pass
         elif current_page == PAGE_PRINTING_DIALOG_SPEED:
             await self.write("b[3].maxval=200")
         elif current_page == PAGE_PRINTING_DIALOG_FLOW:
