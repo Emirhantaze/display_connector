@@ -63,7 +63,7 @@ from src.mapping import (
 )
 from src.colors import BACKGROUND_SUCCESS, BACKGROUND_WARNING
 
-log_file = os.path.expanduser("~/klipper_logs/display_connector.log")
+log_file = os.path.expanduser("/home/mks/klipper_logs/display_connector.log")
 logger = logging.getLogger(__name__)
 ch_log = logging.StreamHandler(sys.stdout)
 ch_log.setLevel(logging.DEBUG)
@@ -77,7 +77,7 @@ logger.addHandler(file_log)
 logger.setLevel(logging.DEBUG)
 
 comms_directory = os.path.expanduser("/tmp")
-config_file = os.path.expanduser("~/klipper_config/display_connector.cfg")
+config_file = os.path.expanduser("/home/mks/klipper_config/display_connector.cfg")
 
 PRINTING_PAGES = [
     PAGE_PRINTING,

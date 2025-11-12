@@ -5,7 +5,7 @@ Wants=klipper.service moonraker.service
 
 [Service]
 Type=simple
-ExecStart=/home/mks/display_connector/dist/moonraker-ws
+ExecStart=/home/mks/polihidra/display_connector/dist/moonraker-ws
 Restart=on-failure
 RestartSec=2s
 
