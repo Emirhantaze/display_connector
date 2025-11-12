@@ -395,12 +395,12 @@ class ElegooDisplayCommunicator(DisplayCommunicator):
             await self.write(
                 "xstr 0,400,320,30,1,65535,"
                 + str(BACKGROUND_GRAY)
-                + ',1,1,1,"OpenNept4une"'
+                + ',1,1,1,"Neptune 4 Multi-Extruder"'
             )
             await self.write(
                 "xstr 0,430,320,30,2,GRAY,"
                 + str(BACKGROUND_GRAY)
-                + ',1,1,1,"github.com/OpenNeptune3D"'
+                + ',1,1,1,"github.com/Emirhantaze"'
             )
         elif current_page == PAGE_LIGHTS:
             await self.write("t0.txt=\"Part Light\"")

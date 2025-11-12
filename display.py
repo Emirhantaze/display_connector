@@ -30,11 +30,8 @@ from src.neptune4 import (
     MODEL_N4_PLUS,
     MODEL_N4_MAX,
     MODELS_N4,
-    ElegooNeptune4DisplayCommunicator,
-    OpenNeptune4DisplayCommunicator
+    ElegooNeptune4DisplayCommunicator
 )
-from src.elegoo_neptune3 import MODELS_N3, ElegooNeptune3DisplayCommunicator, OpenNeptune3DisplayCommunicator
-from src.elegoo_custom import MODEL_CUSTOM, CustomDisplayCommunicator
 from src.mapping import (
     build_format_filename,
     filename_regex_wrapper,
@@ -106,20 +103,12 @@ SUPPORTED_PRINTERS = [MODEL_N4_REGULAR, MODEL_N4_PRO, MODEL_N4_PLUS, MODEL_N4_MA
 
 
 def get_communicator(display, model) -> DisplayCommunicator:
-    if display == "openneptune":
-        if model == MODEL_CUSTOM:
-            return CustomDisplayCommunicator
-        elif model in MODELS_N4:
-            return OpenNeptune4DisplayCommunicator
-        elif model in MODELS_N3:
-            return OpenNeptune3DisplayCommunicator
+    # Only support Elegoo Neptune 4 models with stock firmware
+    if model in MODELS_N4:
+        return ElegooNeptune4DisplayCommunicator
     else:
-        if model == MODEL_CUSTOM:
-            return CustomDisplayCommunicator
-        elif model in MODELS_N4:
-            return ElegooNeptune4DisplayCommunicator
-        elif model in MODELS_N3:
-            return ElegooNeptune3DisplayCommunicator
+        logger.error(f"Unsupported printer model: {model}")
+        return None
 
 
 SOCKET_LIMIT = 20 * 1024 * 1024
@@ -142,9 +131,12 @@ class DisplayController:
         self._handle_config()
         self.connected = False
 
-        display_type = self.config.safe_get("general", "display_type")
         printer_model = self.get_printer_model()
-        self.display = get_communicator(display_type, printer_model)(
+        communicator_class = get_communicator(None, printer_model)
+        if communicator_class is None:
+            raise ValueError(f"Unsupported printer model: {printer_model}")
+        
+        self.display = communicator_class(
             logger,
             printer_model,
             event_handler=self.display_event_handler,
@@ -305,16 +297,27 @@ class DisplayController:
         if "general" in self.config:
             if "printer_model" in self.config["general"]:
                 return self.config["general"]["printer_model"]
-        try:
-            with open("/boot/.OpenNept4une.txt", "r") as file:
-                for line in file:
-                    if line.startswith(tuple(SUPPORTED_PRINTERS)):
-                        model_part = line.split("-")[0].strip()
-                        return model_part
-        except FileNotFoundError:
-            logger.error("File not found")
-        except Exception as e:
-            logger.error(f"Error reading file: {e}")
+        
+        # Try to detect from various possible files
+        possible_files = [
+            "/boot/.OpenNept4une.txt",  # Legacy OpenNeptune
+            "/boot/printer_model.txt",   # Generic
+        ]
+        
+        for file_path in possible_files:
+            try:
+                with open(file_path, "r") as file:
+                    for line in file:
+                        if line.startswith(tuple(SUPPORTED_PRINTERS)):
+                            model_part = line.split("-")[0].strip()
+                            logger.info(f"Detected printer model from {file_path}: {model_part}")
+                            return model_part
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                logger.error(f"Error reading file {file_path}: {e}")
+        
+        logger.warning("Could not auto-detect printer model. Please set 'printer_model' in display_connector.cfg")
         return None
 
     async def special_page_handling(self, current_page):
@@ -1026,10 +1029,10 @@ class DisplayController:
         ret = await self._send_moonraker_request(
             "server.connection.identify",
             {
-                "client_name": "OpenNept4une Display Connector",
-                "version": "0.0.1",
+                "client_name": "Elegoo Neptune 4 Display Connector",
+                "version": "1.0.0",
                 "type": "other",
-                "url": "https://github.com/halfbearman/opennept4une",
+                "url": "https://github.com/Emirhantaze/display_connector",
             },
         )
         logger.debug(
