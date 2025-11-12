@@ -18,8 +18,8 @@ PAGE_FILES = "files"
 PAGE_MY_NEW_PAGE = "my_new_page"  # Example
 ```
 
-### 2. Page Mapping (`src/elegoo_display.py` or `src/openneptune_display.py`)
-Each display type has a mapper that converts page constants to TJC page IDs:
+### 2. Page Mapping (`src/elegoo_display.py`)
+The display mapper converts page constants to TJC page IDs:
 ```python
 class ElegooDisplayMapper(Mapper):
     page_mapping = {
@@ -57,7 +57,7 @@ PAGE_MY_NEW_PAGE = "my_new_page"
 ```
 
 ### Step 2: Add to Page Mapper
-Add to `src/elegoo_display.py` (or your display type):
+Add to `src/elegoo_display.py`:
 ```python
 class ElegooDisplayMapper(Mapper):
     page_mapping = {
@@ -108,8 +108,7 @@ def execute_action(self, action):
 | File | Purpose |
 |------|---------|
 | `src/mapping.py` | Defines page constants |
-| `src/elegoo_display.py` | Maps constants to TJC page IDs (Elegoo) |
-| `src/openneptune_display.py` | Maps constants to TJC page IDs (OpenNeptune) |
+| `src/elegoo_display.py` | Maps constants to TJC page IDs for Neptune 4 |
 | `src/response_actions.py` | Maps button presses to actions |
 | `display.py` | Main controller with navigation logic |
 
